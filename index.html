@@ -184,7 +184,7 @@ const modal = document.getElementById('instruction_modal');
 
 let pts = JSON.parse(localStorage.getItem('wro_pts')) || [
     { x: 200, y: 950, angle: 0 },
-    { x: 800, y: 500, angle: 45 }
+    { x: 800, y: 500, angle: 0 }
 ];
 
 let customInit = `from pybricks.robotics import DriveBase\nfrom pybricks.pupdevices import Motor, ColorSensor\nfrom pybricks.parameters import Port\n\nleft_motor = Motor(Port.A)\nright_motor = Motor(Port.B)\nrobot = DriveBase(left_motor, right_motor, wheel_diameter=56, axle_track=114)`;
@@ -202,6 +202,13 @@ document.getElementById('btn_modal_ok').addEventListener('click', () => {
 
 function saveData() {
     localStorage.setItem('wro_pts', JSON.stringify(pts));
+}
+
+// Вспомогательная функция для нормализации угла в диапазоне [-180, 180]
+function normalizeAngle(angle) {
+    while (angle > 180) angle -= 360;
+    while (angle < -180) angle += 360;
+    return angle;
 }
 
 function drawScene() {
@@ -229,22 +236,22 @@ function drawScene() {
             let distance = Math.sqrt(dx*dx + dy*dy);
             
             if (distance > 5) {
+                // Вычисляем угол движения в математических координатах
                 let moveAngle = Math.atan2(dy, dx) * (180 / Math.PI);
-                let turnAngle = moveAngle - currentAngle;
                 
-                turnAngle = (turnAngle + 180) % 360;
-                if (turnAngle < 0) turnAngle += 360;
-                turnAngle -= 180;
+                // Угол до движения
+                let turnToMove = normalizeAngle(moveAngle - currentAngle);
+                
+                if (Math.abs(turnToMove) > 0.5) {
+                    pybricksCode += `robot.turn(${Math.round(turnToMove)})\n`;
+                    currentAngle += turnToMove;
+                }
+                
+                pybricksCode += `robot.straight(${Math.round(distance)})\n`;
 
-                currentAngle += turnAngle;
-                pybricksCode += `robot.turn(${Math.round(turnAngle)})\nrobot.straight(${Math.round(distance)})\n`;
-
-                let finalTurn = p.angle - currentAngle;
-                finalTurn = (finalTurn + 180) % 360;
-                if (finalTurn < 0) finalTurn += 360;
-                finalTurn -= 180;
-
-                if (Math.abs(finalTurn) > 1) {
+                // Поворот в конечный угол кубика
+                let finalTurn = normalizeAngle(p.angle - currentAngle);
+                if (Math.abs(finalTurn) > 0.5) {
                     pybricksCode += `robot.turn(${Math.round(finalTurn)})\n`;
                     currentAngle += finalTurn;
                 }
@@ -291,7 +298,6 @@ function setupDragAndRotate(el, pObject) {
 
     const handle = el.querySelector('.rotate-handle');
 
-    // Поворот мышкой/пальцем
     const rotateHandler = (clientX, clientY) => {
         const rect = el.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
@@ -301,12 +307,11 @@ function setupDragAndRotate(el, pObject) {
         const dy = -(clientY - centerY);
         
         let deg = Math.atan2(dy, dx) * (180 / Math.PI);
-        deg = 90 - deg; // Приводим к WRO системе координат
-        pObject.angle = Math.round((deg + 360) % 360);
+        // Нормализация угла относительно оси 0
+        pObject.angle = Math.round(normalizeAngle(deg));
         drawScene();
     };
 
-    // Перемещение
     const moveHandler = (clientX, clientY) => {
         const rect = img.getBoundingClientRect();
         const kW = img.clientWidth / W_MM;
@@ -332,7 +337,6 @@ function setupDragAndRotate(el, pObject) {
         }
     });
 
-    // Сенсорное управление
     handle.addEventListener('touchstart', (e) => { isRotating = true; e.stopPropagation(); }, { passive: true });
     el.addEventListener('touchstart', () => { isDragging = true; }, { passive: true });
 
