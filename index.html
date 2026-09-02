@@ -122,18 +122,21 @@
     <h1>🚀 Про-Навигатор WRO 2026</h1>
     <p>Кликни и перетаскивай точки по полю, чтобы построить траекторию движения робота.</p>
 
+    <!-- Поле -->
     <div id="field_wrapper">
-        <img id="field_img" src="field.png" alt="Поле WRO 2026">
+        <img id="field_img" src="wro_field.png" alt="Поле WRO 2026">
         <canvas id="overlay"></canvas>
         <div id="boxes_container"></div>
     </div>
 
+    <!-- Кнопки -->
     <div class="controls">
         <button id="btn_add" class="btn-add">➕ Добавить точку</button>
         <button id="btn_pop" class="btn-pop">❌ Удалить последнюю</button>
         <button id="btn_clear" class="btn-clear">🧹 Очистить всё</button>
     </div>
 
+    <!-- Блок готового кода -->
     <div class="code-box">
         <div class="code-header">
             <span><b>💻 Нативный код Pybricks:</b></span>
@@ -143,6 +146,7 @@
     </div>
 </div>
 
+<!-- Модальное окно инструкции -->
 <div id="instruction_modal" class="modal-overlay">
     <div class="modal-window">
         <h2 style="color: #00e676; margin-top:0;">🤖 Инструкция</h2>
