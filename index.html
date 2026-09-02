@@ -28,6 +28,7 @@
             border-radius: 8px;
             overflow: hidden;
             border: 1px solid #30363d;
+            touch-action: none;
         }
         #field_img {
             width: 100%;
@@ -94,20 +95,16 @@
 
         .rotate-handle {
             position: absolute;
-            top: -15px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 14px;
-            height: 14px;
+            top: -20px;
+            left: calc(50% - 8px);
+            width: 16px;
+            height: 16px;
             background-color: #00e676;
-            border: 2px solid #0e1117;
+            border: 2px solid #ffffff;
             border-radius: 50%;
             cursor: grab;
-            z-index: 10;
-        }
-        .rotate-handle:active {
-            cursor: grabbing;
-            background-color: #ffeb3b;
+            z-index: 20;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
         }
 
         .modal-overlay {
@@ -134,7 +131,7 @@
 
 <div class="container">
     <h1>🚀 Про-Навигатор WRO 2026</h1>
-    <p>Двигай кубики за тело, а за 🟢 зеленую точку сверху — поворачивай робота!</p>
+    <p>Двигай кубики мышкой или пальцем, а за 🟢 зелёную точку — поворачивай робота!</p>
 
     <div id="field_wrapper">
         <img id="field_img" src="wro_field.png" alt="Поле WRO 2026">
@@ -162,7 +159,7 @@
         <h2 style="color: #00e676; margin-top:0;">🤖 Инструкция</h2>
         <p style="text-align: left; line-height: 1.6;">
             • Двигай точки робота по полю мышкой.<br>
-            • Поворачивай робота за зелёную кружочек-рукоятку.<br>
+            • Поворачивай робота за зелёный кружок над ним.<br>
             • Нажми «Скопировать код» и вставь его в среду разработки!
         </p>
         <button class="modal-btn" id="btn_modal_ok">OK</button>
@@ -181,6 +178,9 @@ const boxesContainer = document.getElementById('boxes_container');
 const blockCode = document.getElementById('live_code');
 const btnCopy = document.getElementById('btn_copy');
 const modal = document.getElementById('instruction_modal');
+
+let activePointIndex = null;
+let mode = null; // 'drag' или 'rotate'
 
 let pts = JSON.parse(localStorage.getItem('wro_pts')) || [
     { x: 200, y: 950, angle: 0 },
@@ -204,7 +204,6 @@ function saveData() {
     localStorage.setItem('wro_pts', JSON.stringify(pts));
 }
 
-// Вспомогательная функция для нормализации угла в диапазоне [-180, 180]
 function normalizeAngle(angle) {
     while (angle > 180) angle -= 360;
     while (angle < -180) angle += 360;
@@ -236,10 +235,7 @@ function drawScene() {
             let distance = Math.sqrt(dx*dx + dy*dy);
             
             if (distance > 5) {
-                // Вычисляем угол движения в математических координатах
                 let moveAngle = Math.atan2(dy, dx) * (180 / Math.PI);
-                
-                // Угол до движения
                 let turnToMove = normalizeAngle(moveAngle - currentAngle);
                 
                 if (Math.abs(turnToMove) > 0.5) {
@@ -249,7 +245,6 @@ function drawScene() {
                 
                 pybricksCode += `robot.straight(${Math.round(distance)})\n`;
 
-                // Поворот в конечный угол кубика
                 let finalTurn = normalizeAngle(p.angle - currentAngle);
                 if (Math.abs(finalTurn) > 0.5) {
                     pybricksCode += `robot.turn(${Math.round(finalTurn)})\n`;
@@ -282,79 +277,72 @@ function drawScene() {
         box.style.fontWeight = 'bold';
         box.style.fontSize = '12px';
         box.style.borderRadius = '4px';
-        box.style.transform = "rotate(" + (-p.angle + 90) + "deg)";
-        box.innerHTML = `<span>${i === 0 ? "СТАРТ" : i + 1}</span><div class="rotate-handle"></div>`;
+        box.style.transform = `rotate(${-p.angle}deg)`;
+        box.style.cursor = 'move';
+        
+        box.innerHTML = `<span>${i === 0 ? "СТАРТ" : i + 1}</span><div class="rotate-handle" data-index="${i}"></div>`;
+
+        // Захват клика/касания
+        box.addEventListener('mousedown', (e) => startInteraction(e, i, 'drag'));
+        box.addEventListener('touchstart', (e) => startInteraction(e, i, 'drag'), { passive: false });
+
+        const handle = box.querySelector('.rotate-handle');
+        handle.addEventListener('mousedown', (e) => { e.stopPropagation(); startInteraction(e, i, 'rotate'); });
+        handle.addEventListener('touchstart', (e) => { e.stopPropagation(); startInteraction(e, i, 'rotate'); }, { passive: false });
 
         boxesContainer.appendChild(box);
-        setupDragAndRotate(box, p);
     }
     
     blockCode.innerText = pybricksCode;
 }
 
-function setupDragAndRotate(el, pObject) {
-    let isDragging = false;
-    let isRotating = false;
-
-    const handle = el.querySelector('.rotate-handle');
-
-    const rotateHandler = (clientX, clientY) => {
-        const rect = el.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        
-        const dx = clientX - centerX;
-        const dy = -(clientY - centerY);
-        
-        let deg = Math.atan2(dy, dx) * (180 / Math.PI);
-        // Нормализация угла относительно оси 0
-        pObject.angle = Math.round(normalizeAngle(deg));
-        drawScene();
-    };
-
-    const moveHandler = (clientX, clientY) => {
-        const rect = img.getBoundingClientRect();
-        const kW = img.clientWidth / W_MM;
-        const kH = img.clientHeight / H_MM;
-        pObject.x = Math.max(0, Math.min(W_MM, (clientX - rect.left) / kW));
-        pObject.y = Math.max(0, Math.min(H_MM, (clientY - rect.top) / kH));
-        drawScene();
-    };
-
-    handle.addEventListener('mousedown', (e) => { isRotating = true; e.stopPropagation(); e.preventDefault(); });
-    el.addEventListener('mousedown', (e) => { isDragging = true; e.preventDefault(); });
-
-    window.addEventListener('mousemove', (e) => {
-        if (isRotating) rotateHandler(e.clientX, e.clientY);
-        else if (isDragging) moveHandler(e.clientX, e.clientY);
-    });
-
-    window.addEventListener('mouseup', () => {
-        if (isDragging || isRotating) {
-            isDragging = false;
-            isRotating = false;
-            saveData();
-        }
-    });
-
-    handle.addEventListener('touchstart', (e) => { isRotating = true; e.stopPropagation(); }, { passive: true });
-    el.addEventListener('touchstart', () => { isDragging = true; }, { passive: true });
-
-    window.addEventListener('touchmove', (e) => {
-        if (e.touches.length > 0) {
-            if (isRotating) rotateHandler(e.touches[0].clientX, e.touches[0].clientY);
-            else if (isDragging) moveHandler(e.touches[0].clientX, e.touches[0].clientY);
-        }
-    }, { passive: true });
-
-    window.addEventListener('touchend', () => {
-        if (isDragging || isRotating) {
-            isDragging = false;
-            isRotating = false;
-            saveData();
-        }
-    });
+function startInteraction(e, index, action) {
+    activePointIndex = index;
+    mode = action;
+    e.preventDefault();
 }
+
+function handlePointerMove(clientX, clientY) {
+    if (activePointIndex === null) return;
+
+    const p = pts[activePointIndex];
+    const rect = img.getBoundingClientRect();
+    const kW = img.clientWidth / W_MM;
+    const kH = img.clientHeight / H_MM;
+
+    if (mode === 'drag') {
+        let newX = (clientX - rect.left) / kW;
+        let newY = (clientY - rect.top) / kH;
+        p.x = Math.max(0, Math.min(W_MM, newX));
+        p.y = Math.max(0, Math.min(H_MM, newY));
+    } else if (mode === 'rotate') {
+        let centerX = rect.left + (p.x * kW);
+        let centerY = rect.top + (p.y * kH);
+        let dx = clientX - centerX;
+        let dy = -(clientY - centerY);
+        
+        let rad = Math.atan2(dy, dx);
+        let deg = rad * (180 / Math.PI);
+        p.angle = Math.round(normalizeAngle(90 - deg));
+    }
+    drawScene();
+}
+
+function stopInteraction() {
+    if (activePointIndex !== null) {
+        activePointIndex = null;
+        mode = null;
+        saveData();
+    }
+}
+
+window.addEventListener('mousemove', (e) => handlePointerMove(e.clientX, e.clientY));
+window.addEventListener('mouseup', stopInteraction);
+
+window.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 0) handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: false });
+window.addEventListener('touchend', stopInteraction);
 
 btnCopy.addEventListener('click', () => {
     navigator.clipboard.writeText(blockCode.innerText).then(() => {
