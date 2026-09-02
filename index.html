@@ -180,7 +180,7 @@ const btnCopy = document.getElementById('btn_copy');
 const modal = document.getElementById('instruction_modal');
 
 let activePointIndex = null;
-let mode = null; // 'drag' или 'rotate'
+let mode = null;
 
 let pts = JSON.parse(localStorage.getItem('wro_pts')) || [
     { x: 200, y: 950, angle: 0 },
@@ -204,6 +204,7 @@ function saveData() {
     localStorage.setItem('wro_pts', JSON.stringify(pts));
 }
 
+// Нормализация угла в диапозон [-180, 180]
 function normalizeAngle(angle) {
     while (angle > 180) angle -= 360;
     while (angle < -180) angle += 360;
@@ -231,11 +232,12 @@ function drawScene() {
         if (i > 0) {
             let prev = pts[i-1];
             let dx = p.x - prev.x;
-            let dy = -(p.y - prev.y);
+            let dy = -(p.y - prev.y); // Переворачиваем Y для экрана
             let distance = Math.sqrt(dx*dx + dy*dy);
             
             if (distance > 5) {
-                let moveAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+                // Вычисляем угол векторного движения
+                let moveAngle = Math.atan2(dx, dy) * (180 / Math.PI);
                 let turnToMove = normalizeAngle(moveAngle - currentAngle);
                 
                 if (Math.abs(turnToMove) > 0.5) {
@@ -277,12 +279,12 @@ function drawScene() {
         box.style.fontWeight = 'bold';
         box.style.fontSize = '12px';
         box.style.borderRadius = '4px';
-        box.style.transform = `rotate(${-p.angle}deg)`;
+        // Единое отображение угла вращения
+        box.style.transform = `rotate(${p.angle}deg)`;
         box.style.cursor = 'move';
         
-        box.innerHTML = `<span>${i === 0 ? "СТАРТ" : i + 1}</span><div class="rotate-handle" data-index="${i}"></div>`;
+        box.innerHTML = `<span>${i === 0 ? "СТАРТ" : i + 1}</span><div class="rotate-handle"></div>`;
 
-        // Захват клика/касания
         box.addEventListener('mousedown', (e) => startInteraction(e, i, 'drag'));
         box.addEventListener('touchstart', (e) => startInteraction(e, i, 'drag'), { passive: false });
 
@@ -318,12 +320,14 @@ function handlePointerMove(clientX, clientY) {
     } else if (mode === 'rotate') {
         let centerX = rect.left + (p.x * kW);
         let centerY = rect.top + (p.y * kH);
-        let dx = clientX - centerX;
-        let dy = -(clientY - centerY);
         
-        let rad = Math.atan2(dy, dx);
+        let dx = clientX - centerX;
+        let dy = clientY - centerY;
+        
+        // Исправлено направление и инверсия осей
+        let rad = Math.atan2(dx, -dy);
         let deg = rad * (180 / Math.PI);
-        p.angle = Math.round(normalizeAngle(90 - deg));
+        p.angle = Math.round(normalizeAngle(deg));
     }
     drawScene();
 }
