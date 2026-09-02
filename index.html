@@ -19,7 +19,6 @@
         h1 { color: #00e676; margin-bottom: 5px; }
         p { color: #8b949e; margin-top: 0; }
         
-        /* Поле и Canvas */
         #field_wrapper {
             position: relative;
             width: 100%;
@@ -44,7 +43,6 @@
             z-index: 5;
         }
         
-        /* Кнопки управления */
         .controls {
             display: flex;
             gap: 12px;
@@ -66,7 +64,6 @@
         .btn-clear { background: #6e7681; color: white; }
         .btn-copy { background: #21262d; color: #00e676; border: 1px solid #00e676; }
 
-        /* Окно с кодом */
         .code-box {
             margin-top: 25px;
             max-width: 1100px;
@@ -95,7 +92,24 @@
             overflow-y: auto;
         }
 
-        /* Модальное окно */
+        .rotate-handle {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 14px;
+            height: 14px;
+            background-color: #00e676;
+            border: 2px solid #0e1117;
+            border-radius: 50%;
+            cursor: grab;
+            z-index: 10;
+        }
+        .rotate-handle:active {
+            cursor: grabbing;
+            background-color: #ffeb3b;
+        }
+
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -120,23 +134,20 @@
 
 <div class="container">
     <h1>🚀 Про-Навигатор WRO 2026</h1>
-    <p>Кликни и перетаскивай точки по полю, чтобы построить траекторию движения робота.</p>
+    <p>Двигай кубики за тело, а за 🟢 зеленую точку сверху — поворачивай робота!</p>
 
-    <!-- Поле -->
     <div id="field_wrapper">
         <img id="field_img" src="wro_field.png" alt="Поле WRO 2026">
         <canvas id="overlay"></canvas>
         <div id="boxes_container"></div>
     </div>
 
-    <!-- Кнопки -->
     <div class="controls">
         <button id="btn_add" class="btn-add">➕ Добавить точку</button>
         <button id="btn_pop" class="btn-pop">❌ Удалить последнюю</button>
         <button id="btn_clear" class="btn-clear">🧹 Очистить всё</button>
     </div>
 
-    <!-- Блок готового кода -->
     <div class="code-box">
         <div class="code-header">
             <span><b>💻 Нативный код Pybricks:</b></span>
@@ -146,13 +157,12 @@
     </div>
 </div>
 
-<!-- Модальное окно инструкции -->
 <div id="instruction_modal" class="modal-overlay">
     <div class="modal-window">
         <h2 style="color: #00e676; margin-top:0;">🤖 Инструкция</h2>
         <p style="text-align: left; line-height: 1.6;">
-            • Двигай точки робота по полю мышкой или пальцем.<br>
-            • Код Pybricks генерируется автоматически внизу.<br>
+            • Двигай точки робота по полю мышкой.<br>
+            • Поворачивай робота за зелёную кружочек-рукоятку.<br>
             • Нажми «Скопировать код» и вставь его в среду разработки!
         </p>
         <button class="modal-btn" id="btn_modal_ok">OK</button>
@@ -163,7 +173,6 @@
 const W_MM = 2362;
 const H_MM = 1143;
 const ROB_MM = 250;
-const SNAP_THRESHOLD = 3.5;
 
 const img = document.getElementById('field_img');
 const canvas = document.getElementById('overlay');
@@ -173,15 +182,13 @@ const blockCode = document.getElementById('live_code');
 const btnCopy = document.getElementById('btn_copy');
 const modal = document.getElementById('instruction_modal');
 
-// Начальные точки
 let pts = JSON.parse(localStorage.getItem('wro_pts')) || [
-    { x: 200, y: 950, type: "straight", comment: "Старт" },
-    { x: 800, y: 500, type: "straight", comment: "Шаг 1" }
+    { x: 200, y: 950, angle: 0 },
+    { x: 800, y: 500, angle: 45 }
 ];
 
 let customInit = `from pybricks.robotics import DriveBase\nfrom pybricks.pupdevices import Motor, ColorSensor\nfrom pybricks.parameters import Port\n\nleft_motor = Motor(Port.A)\nright_motor = Motor(Port.B)\nrobot = DriveBase(left_motor, right_motor, wheel_diameter=56, axle_track=114)`;
 
-// Проверка первого визита
 if (!localStorage.getItem('wro_visited')) {
     modal.style.display = 'flex';
     setTimeout(() => { modal.style.opacity = '1'; }, 50);
@@ -208,12 +215,13 @@ function drawScene() {
     canvas.height = img.clientHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    let currentAngle = 0;
     let pybricksCode = "# Робот собран с помощью Про-Навигатора WRO 2026\n" + customInit + "\n\n# --- МАРШРУТ ---\n";
+    let currentAngle = pts[0].angle || 0;
 
     for(let i = 0; i < pts.length; i++) {
         let p = pts[i];
-        
+        if (p.angle === undefined) p.angle = 0;
+
         if (i > 0) {
             let prev = pts[i-1];
             let dx = p.x - prev.x;
@@ -228,19 +236,19 @@ function drawScene() {
                 if (turnAngle < 0) turnAngle += 360;
                 turnAngle -= 180;
 
-                const targets = [-180, -135, -90, -45, 0, 45, 90, 135, 180];
-                for (let t of targets) {
-                    if (Math.abs(turnAngle - t) <= SNAP_THRESHOLD) {
-                        turnAngle = t;
-                        let rad = (turnAngle + currentAngle) * (Math.PI / 180);
-                        p.x = prev.x + distance * Math.cos(rad);
-                        p.y = prev.y - distance * Math.sin(rad);
-                        break;
-                    }
-                }
-
                 currentAngle += turnAngle;
-                pybricksCode += `robot.turn(${Math.round(turnAngle)})\nrobot.straight(${Math.round(distance)})\n\n`;
+                pybricksCode += `robot.turn(${Math.round(turnAngle)})\nrobot.straight(${Math.round(distance)})\n`;
+
+                let finalTurn = p.angle - currentAngle;
+                finalTurn = (finalTurn + 180) % 360;
+                if (finalTurn < 0) finalTurn += 360;
+                finalTurn -= 180;
+
+                if (Math.abs(finalTurn) > 1) {
+                    pybricksCode += `robot.turn(${Math.round(finalTurn)})\n`;
+                    currentAngle += finalTurn;
+                }
+                pybricksCode += `\n`;
 
                 ctx.beginPath();
                 ctx.moveTo(prev.x * kW, prev.y * kH);
@@ -267,18 +275,38 @@ function drawScene() {
         box.style.fontWeight = 'bold';
         box.style.fontSize = '12px';
         box.style.borderRadius = '4px';
-        box.style.transform = "rotate(" + (-currentAngle + 90) + "deg)";
-        box.innerText = i === 0 ? "СТАРТ" : i + 1;
+        box.style.transform = "rotate(" + (-p.angle + 90) + "deg)";
+        box.innerHTML = `<span>${i === 0 ? "СТАРТ" : i + 1}</span><div class="rotate-handle"></div>`;
 
         boxesContainer.appendChild(box);
-        setupDrag(box, p);
+        setupDragAndRotate(box, p);
     }
     
     blockCode.innerText = pybricksCode;
 }
 
-function setupDrag(el, pObject) {
+function setupDragAndRotate(el, pObject) {
     let isDragging = false;
+    let isRotating = false;
+
+    const handle = el.querySelector('.rotate-handle');
+
+    // Поворот мышкой/пальцем
+    const rotateHandler = (clientX, clientY) => {
+        const rect = el.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        const dx = clientX - centerX;
+        const dy = -(clientY - centerY);
+        
+        let deg = Math.atan2(dy, dx) * (180 / Math.PI);
+        deg = 90 - deg; // Приводим к WRO системе координат
+        pObject.angle = Math.round((deg + 360) % 360);
+        drawScene();
+    };
+
+    // Перемещение
     const moveHandler = (clientX, clientY) => {
         const rect = img.getBoundingClientRect();
         const kW = img.clientWidth / W_MM;
@@ -288,13 +316,40 @@ function setupDrag(el, pObject) {
         drawScene();
     };
 
+    handle.addEventListener('mousedown', (e) => { isRotating = true; e.stopPropagation(); e.preventDefault(); });
     el.addEventListener('mousedown', (e) => { isDragging = true; e.preventDefault(); });
-    window.addEventListener('mousemove', (e) => { if (isDragging) moveHandler(e.clientX, e.clientY); });
-    window.addEventListener('mouseup', () => { if (isDragging) { isDragging = false; saveData(); } });
 
+    window.addEventListener('mousemove', (e) => {
+        if (isRotating) rotateHandler(e.clientX, e.clientY);
+        else if (isDragging) moveHandler(e.clientX, e.clientY);
+    });
+
+    window.addEventListener('mouseup', () => {
+        if (isDragging || isRotating) {
+            isDragging = false;
+            isRotating = false;
+            saveData();
+        }
+    });
+
+    // Сенсорное управление
+    handle.addEventListener('touchstart', (e) => { isRotating = true; e.stopPropagation(); }, { passive: true });
     el.addEventListener('touchstart', () => { isDragging = true; }, { passive: true });
-    window.addEventListener('touchmove', (e) => { if (isDragging && e.touches.length > 0) moveHandler(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
-    window.addEventListener('touchend', () => { if (isDragging) { isDragging = false; saveData(); } });
+
+    window.addEventListener('touchmove', (e) => {
+        if (e.touches.length > 0) {
+            if (isRotating) rotateHandler(e.touches[0].clientX, e.touches[0].clientY);
+            else if (isDragging) moveHandler(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    }, { passive: true });
+
+    window.addEventListener('touchend', () => {
+        if (isDragging || isRotating) {
+            isDragging = false;
+            isRotating = false;
+            saveData();
+        }
+    });
 }
 
 btnCopy.addEventListener('click', () => {
@@ -306,7 +361,7 @@ btnCopy.addEventListener('click', () => {
 
 document.getElementById('btn_add').addEventListener('click', () => {
     let last = pts[pts.length - 1];
-    pts.push({ x: Math.min(W_MM, last.x + 200), y: Math.max(0, last.y - 200) });
+    pts.push({ x: Math.min(W_MM, last.x + 200), y: Math.max(0, last.y - 200), angle: 0 });
     drawScene(); saveData();
 });
 
@@ -315,7 +370,7 @@ document.getElementById('btn_pop').addEventListener('click', () => {
 });
 
 document.getElementById('btn_clear').addEventListener('click', () => {
-    pts = [{ x: 200, y: 950 }, { x: 500, y: 500 }];
+    pts = [{ x: 200, y: 950, angle: 0 }, { x: 500, y: 500, angle: 0 }];
     drawScene(); saveData();
 });
 
